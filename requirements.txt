@@ -2,3 +2,7 @@ pandas
 scikit-learn
 kafka-python 
 mysql-connector-python 
+dash
+plotly
+SQLAlchemy
+pymysql
