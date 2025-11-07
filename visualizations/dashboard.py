@@ -22,13 +22,10 @@ try:
         model_package = pickle.load(f)
     pca = model_package["pca"]
     n_components = pca.n_components_
-    explained_variance = pca.explained_variance_ratio_
     print(f"PCA Model loaded: {n_components} components")
-    print(f"Explained variance: {explained_variance.sum()*100:.2f}%")
 except Exception as e:
     print(f"Could not load PCA model: {e}")
     n_components = 3
-    explained_variance = [0.33, 0.33, 0.34]
 
 def load_predictions_from_db(filter_type='test'):
     try:
@@ -121,35 +118,34 @@ KPI_CARD_STYLE = {
     'padding': '20px'
 }
 
-BUTTON_STYLE = {
-    'backgroundColor': COLORS['primary'],
-    'color': 'white',
-    'border': 'none',
-    'padding': '12px 24px',
-    'borderRadius': '8px',
-    'cursor': 'pointer',
-    'fontSize': '15px',
-    'fontWeight': '600',
-    'transition': 'all 0.3s ease',
-    'boxShadow': '0 2px 8px rgba(76, 139, 245, 0.3)'
-}
 
 # Layout
 app.layout = html.Div(style={'backgroundColor': COLORS['background'], 'minHeight': '100vh', 'padding': '30px 40px', 'fontFamily': 'Arial, sans-serif'}, children=[
     
     html.Div(style={'background': f'linear-gradient(135deg, {COLORS["primary"]}, {COLORS["info"]})', 'padding': '30px', 'borderRadius': '15px', 'marginBottom': '30px', 'boxShadow': '0 8px 20px rgba(0, 0, 0, 0.4)'}, children=[
         html.H1('ML Model Performance Monitor', style={'color': 'white', 'marginBottom': '8px', 'fontSize': '32px', 'fontWeight': '700'}),
-        html.P(f'PCA-based Happiness Score Prediction ({n_components} components • {explained_variance.sum()*100:.1f}% variance)', style={'color': 'rgba(255,255,255,0.9)', 'fontSize': '16px', 'margin': '0'})
+        html.P(f'PCA-based Happiness Score Prediction ({n_components} components)', style={'color': 'rgba(255,255,255,0.9)', 'fontSize': '16px', 'margin': '0'})
     ]),
     
     html.Div(style={**CARD_STYLE, 'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'flexWrap': 'wrap', 'gap': '15px'}, children=[
         html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '15px'}, children=[
             html.Label('Data Filter:', style={'color': COLORS['text'], 'fontSize': '15px', 'fontWeight': '600'}),
-            dcc.Dropdown(id='data-filter', options=[
-                {'label': 'Training Data', 'value': 'train'},
-                {'label': 'Test Data', 'value': 'test'},
-                {'label': 'All Data', 'value': 'all'}
-            ], value='test', clearable=False, style={'width': '200px', 'backgroundColor': COLORS['card_hover'], 'color': COLORS['text']})
+            dcc.Dropdown(
+                id='data-filter',
+                options=[
+                    {'label': 'Training Data', 'value': 'train'},
+                    {'label': 'Test Data', 'value': 'test'},
+                    {'label': 'All Data', 'value': 'all'}
+                ],
+                value='test',
+                clearable=False,
+                style={
+                    'width': '220px',
+                    'color': COLORS['text'],
+                    'backgroundColor': COLORS['card_hover']
+                },
+                className="dark-dropdown"
+            )
         ]),
         html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '20px'}, children=[
             html.Div(id='status-indicator', children=[
@@ -185,18 +181,29 @@ app.layout = html.Div(style={'backgroundColor': COLORS['background'], 'minHeight
         ]),
     ]),
     
-    html.Div(style=CARD_STYLE, children=[
-        html.H3('Feature Impact on Predictions', style={'color': COLORS['text'], 'margin': '0', 'fontSize': '18px', 'fontWeight': '600'}),
-        html.Div(style={'display': 'grid', 'gridTemplateColumns': 'repeat(auto-fit, minmax(350px, 1fr))', 'gap': '15px'}, children=[
-            dcc.Graph(id='gdp-impact', style={'height': '280px'}, config={'displayModeBar': False}),
-            dcc.Graph(id='life-impact', style={'height': '280px'}, config={'displayModeBar': False}),
-            dcc.Graph(id='social-impact', style={'height': '280px'}, config={'displayModeBar': False}),
-        ])
-    ]),
-    
     dcc.Interval(id='interval-component', interval=5000, n_intervals=0),
     dcc.Store(id='data-store')
 ])
+
+app.index_string = app.index_string.replace(
+    "</head>",
+    """
+    <style>
+    .Select-menu-outer {
+        background-color: #1a1f3a !important;
+        color: #e8eaed !important;
+    }
+    .Select-value-label {
+        color: #e8eaed !important;
+    }
+    .Select-control {
+        background-color: #1a1f3a !important;
+        border-color: #3c4048 !important;
+    }
+    </style>
+    </head>
+    """
+)
 
 # Callbacks
 @callback(
@@ -219,9 +226,6 @@ def update_data(n_intervals, filter_type):
      Output('error-distribution', 'figure'),
      Output('residuals-plot', 'figure'),
      Output('error-by-range', 'figure'),
-     Output('gdp-impact', 'figure'),
-     Output('life-impact', 'figure'),
-     Output('social-impact', 'figure'),
      Output('kpi-section', 'children')],
     Input('data-store', 'data')
 )
@@ -258,19 +262,6 @@ def update_graphs(data):
     error_range_fig.add_trace(go.Bar(x=error_by_bin['pred_bin'].astype(str), y=error_by_bin['abs_error']))
     error_range_fig.update_layout(template='plotly_dark', xaxis_title='Prediction Range', yaxis_title='Mean Absolute Error')
 
-    # Feature Impact
-    feature_figs = []
-    features_to_plot = [('gdp_per_capita', 'GDP'), ('life_expectancy', 'Life Expectancy'), ('social_support', 'Social Support')]
-    for feature, title in features_to_plot:
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df_plot[feature], y=df_plot['y_real'], mode='markers'))
-        z = np.polyfit(df_plot[feature], df_plot['y_real'], 1)
-        p = np.poly1d(z)
-        x_trend = np.linspace(df_plot[feature].min(), df_plot[feature].max(), 100)
-        fig.add_trace(go.Scatter(x=x_trend, y=p(x_trend), mode='lines'))
-        fig.update_layout(template='plotly_dark', xaxis_title=title, yaxis_title='Happiness Score')
-        feature_figs.append(fig)
-
     # KPI Section
     kpi_data = [
         ('R² Score', f"{metrics_data['r2']:.4f}"),
@@ -287,7 +278,7 @@ def update_graphs(data):
         ]) for label, value in kpi_data
     ])
 
-    return [scatter_fig, error_dist, residuals_plot, error_range_fig, *feature_figs, kpi_section]
+    return [scatter_fig, error_dist, residuals_plot, error_range_fig, kpi_section]
 
 if __name__ == '__main__':
-    app.run(debug=False, port=8050)
+    app.run(debug=True, port=8050)

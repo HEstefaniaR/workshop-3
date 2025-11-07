@@ -17,5 +17,8 @@ cd $KAFKA_DIR
 
 cd $PROJECT_DIR
 
-python3.12 scripts/consumer.py 
+python3.12 scripts/consumer.py &
+
+sleep 2
+
 python3.12 scripts/producer.py

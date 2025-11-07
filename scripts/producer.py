@@ -162,7 +162,7 @@ if __name__ == "__main__":
         data = {feat: row[feat] for feat in features}
         producer.send(TOPIC_NAME, value=data)
         print(f"{i+1} enviado (is_train={row['is_train']})")
-        time.sleep(2)
+        time.sleep(0.2)
 
     producer.flush()
     print("Todos los datos enviados exitosamente")
